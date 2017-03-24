@@ -77,7 +77,7 @@ if __name__ == '__main__':
     print("Tokenizing and Vectorizing questions...")
     q1_tok, q2_tok = tokenize(tkn, X)
     q1_vec, q2_vec, word_indx =  build_dataset(q1_tok, q2_tok, vocab_size=vocab_size)
-     del X
+    del X
     # padding with 0 to the left at maxlen width
     q1_pad = sequence.pad_sequences(q1_vec, maxlen)
     q2_pad = sequence.pad_sequences(q2_vec, maxlen)

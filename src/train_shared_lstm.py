@@ -12,15 +12,9 @@ from keras.models import Model
 import keras.layers
 from keras.layers import LSTM, Merge, merge, Embedding, Dropout, Input, Dense
 
+import argparse
 
 HOME = os.path.join(os.path.expanduser('~'), "quora-duplicate-questions")
-DATA_HOME = os.path.join(HOME, "processed_data", "training", "Friday_24_03")
-TRAIN_Q1 = os.path.join(DATA_HOME, "q1_X_train_padded.npy")
-TRAIN_Q2 = os.path.join(DATA_HOME, "q2_X_train_padded.npy")
-TRAIN_Y = os.path.join(DATA_HOME, "y_train.npy")
-WORD_DIC = os.path.join(DATA_HOME, "word_index.pkl")
-
-
 MODELS = os.path.join(HOME, 'models')
 LOGS = os.path.join(HOME, 'logs')
 
@@ -78,8 +72,23 @@ def shared_lstm(maxlen=None,
     return Model(inputs=[q1_input, q2_input], outputs=output)
 
 
+def args():
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-f', dest='input_folder')
+    return parser.parse_args()
+
 if __name__ == "__main__":
     
+    train_folder = args().input_folder
+    
+    DATA_HOME = train_folder
+    TRAIN_Q1 = os.path.join(DATA_HOME, "q1_X_train_padded.npy")
+    TRAIN_Q2 = os.path.join(DATA_HOME, "q2_X_train_padded.npy")
+    TRAIN_Y = os.path.join(DATA_HOME, "y_train.npy")
+    WORD_DIC = os.path.join(DATA_HOME, "word_index.pkl")
+
+
     maxlen = 50
     vocab_size = 50000
 

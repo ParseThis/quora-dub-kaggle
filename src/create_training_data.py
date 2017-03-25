@@ -41,20 +41,20 @@ def build_dataset(q1, q2, vocab_size):
         Each list contain integers representation of tokens
         for each sentence. 
 
-        [[ 1 , 56, 5, 9], [...] ] ,  [[20, 0, -1, 5, 2], [...]]
+        [[ 1 , 56, 5, 9], [...] ] ,  [[20, 0, 1, 5, 2], [...]]
     """
     # get the most common words in the vocab
     # and build index with those words 
     # we'll replace words in not our vocab with the token 'UNK'
 
     
-    count = [('UNK', -1)] 
+    count = [('UNK', 1)] 
     gathered = (x for sent in chain(q1, q2) for x in sent)
     count.extend(Counter(gathered).most_common(vocab_size -1))
-    word_indx = {w : i+1 for i, (w, _) in enumerate(count)}
+    word_indx = {w : i+2 for i, (w, _) in enumerate(count)}
     # encode the data using this index
-    q1_tok = [[word_indx.get(w) or -1 for w in sent] for sent in q1] 
-    q2_tok = [[word_indx.get(w) or -1 for w in sent] for sent in q2]
+    q1_tok = [[word_indx.get(w) or 1 for w in sent] for sent in q1] 
+    q2_tok = [[word_indx.get(w) or 1 for w in sent] for sent in q2]
     
     print("Sample vector from question1: {}\n\n".format(q1_tok[:2])) 
     print("Sample vector from question2: {}".format(q2_tok[:2])) 

@@ -84,19 +84,19 @@ if __name__ == '__main__':
     
     # one hot encode the target
     # we are going to have to reshape is_duplicate to be a colunmn vectora
-    print("One Hot Encoding the target...")
-    _y = enc.fit_transform(y.values.reshape(-1, 1)).toarray()
+    # print("One Hot Encoding the target...")
+    _y = y.values.reshape(-1, 1)
     del y
 
     print("Sample of One Hot Encoded targets", _y[:10, :])
     
     # place these transformed vectoes in a time stamped folder
-    day = datetime.now().strftime("%A_%d_%m")
+    day = datetime.now().strftime("%A_%d_%m_%_H_%-M")
     
     try:
         folder = os.path.join(PROCESSED, 'training', day)
         os.makedirs(folder)
-    except FileExitError:
+    except FileExistError:
         pass
 
     print('Writing features and target to timestamped folder :', folder) 

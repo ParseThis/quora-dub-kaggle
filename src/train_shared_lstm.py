@@ -4,35 +4,67 @@ import pdb
 import json
 import pickle
 from datetime import datetime
-
-
+from zipfile import ZipFile
 import numpy as np
 from keras import backend as K
 from keras.models import Model
 import keras.layers
-from keras.layers import LSTM, Merge, merge, Embedding, Dropout, Input, Dense
-
+from keras.layers import    (LSTM, Merge, merge, Embedding, Dropout, Input, Dense,
+                            BatchNormalization)
+import keras.callbacks
 import argparse
 
 HOME = os.path.join(os.path.expanduser('~'), "quora-duplicate-questions")
 MODELS = os.path.join(HOME, 'models')
 LOGS = os.path.join(HOME, 'logs')
+ZIPFILE = os.path.join(HOME, 'data', 'glove.42B.300d.zip')
+GLOVEFILE = os.path.join(HOME,  'data', 'glove', 'glove.42B.300d.txt')
+GLOVEZIP = 'glove.42B.300d.zip'
+MAX_NB_WORDS = 100000
+MAXLEN = 20
+EMBEDDING_DIM = 300
 
 class ShowPredictions(keras.callbacks.Callback):
     def on_batch_end(self, batch, logs={}):
         print(self.model.predict(batch, batch_size=len(batch)))
 
 
+def makeEM(mx_words, word_index):
+
+    embedding  = {}
+    with open(GLOVEFILE) as g:
+        for i, line in enumerate(g.readlines()):
+            v = line.split(' ') # py3 syntax unpacking
+            w = v[0]
+            coeff = np.asarray(v[1:], dtype='float32')
+            embedding[w] = coeff
+    
+    mx = min(len(embedding), mx_words)
+    mat = np.zeros((mx + 2, EMBEDDING_DIM), dtype='float32')
+
+    # map every word in my vocabulary
+    for word, i in word_index.items():
+        vec = embedding.get(word)
+        if i > mx: # if the word index is greatner the numver  
+            continue
+        if vec is not None:
+            mat[i] = vec
+
+    return mat
+                
 def load_data():
 
     q1_X_train = np.load(TRAIN_Q1)           
     q2_X_train = np.load(TRAIN_Q2)           
     y_train = np.load(TRAIN_Y)
-    # word_index = pickle.load(open(WORD_DIC, 'rb'))
+    
+    with open(WORD_DIC, 'rb') as w:
+        word_index = pickle.load(w)
 
-    return q1_X_train, q2_X_train, y_train
+    return q1_X_train, q2_X_train, y_train, word_index
 
-def shared_lstm(maxlen=None,
+def shared_lstm(embedding_matrix=None,
+                maxlen=None,
                 vocab_size=None,
                 hidden_lstm=None,
                 batch_size=None,
@@ -43,32 +75,35 @@ def shared_lstm(maxlen=None,
     q2_input = Input(shape=(maxlen,), name='q2_input')
     
     q1_embed = Embedding(vocab_size+2, 
-                        hidden_lstm, 
+                        EMBEDDING_DIM, 
                         input_length=maxlen,
+                        weights=[embedding_matrix],
+                        trainable=False,
                         mask_zero=True,
                         name="q1_embedding")(q1_input)
-    q2_embed = Embedding(vocab_size + 2,
-                        hidden_lstm,
+
+    q2_embed = Embedding(vocab_size+2,
+                        EMBEDDING_DIM,
                         input_length=maxlen,
+                        weights=[embedding_matrix],
+                        trainable=False,
                         mask_zero=True,
                         name="q2_embedding")(q2_input)
 
-    dropout_q1 = Dropout(dropout_embedding, name="dropout_q1")(q1_embed)
-    dropout_q2 = Dropout(dropout_embedding, name="dropout_q2")(q2_embed)
 
-    lstm = LSTM(64, name="shared_lstm")
-    q1_shared_lstm = lstm(dropout_q1)
-    q2_shared_lstm = lstm(dropout_q2)
+    lstm = LSTM(512, name="shared_lstm")
+    q1_shared_lstm = lstm(q1_embed)
+    q2_shared_lstm = lstm(q2_embed)
 
     gathered = keras.layers.concatenate([q1_shared_lstm, q2_shared_lstm], axis=-1)
-
-    dropout_gathered = Dropout(dropout_lstm, name="gathered_dropout")(gathered)
-    d1 = Dense(32, activation='relu', name="FC_1")(dropout_gathered)
-    d2 = Dense(32, activation='relu', name="FC_2")(d1)
-    d3 = Dense(32, activation='relu', name="FC_3")(d2)
-    dropout_d3 = Dropout(dropout_lstm, name="dropout_after_FC")(d3)
-
-    output  = Dense(1, activation = 'sigmoid', name="predictions")(dropout_d3)
+    norm0 = BatchNormalization()(gathered)
+    d1 = Dense(32, activation='relu', name="FC_1")(norm0)
+    norm1 = BatchNormalization()(d1)
+    d2 = Dense(32, activation='relu', name="FC_2")(norm1)
+    norm2 = BatchNormalization()(d2)
+    d3 = Dense(32, activation='relu', name="FC_3")(norm2)
+    norm3 = BatchNormalization()(d3)
+    output  = Dense(1, activation = 'sigmoid', name="predictions")(norm_d3)
     return Model(inputs=[q1_input, q2_input], outputs=output)
 
 
@@ -87,31 +122,44 @@ if __name__ == "__main__":
     TRAIN_Q2 = os.path.join(DATA_HOME, "q2_X_train_padded.npy")
     TRAIN_Y = os.path.join(DATA_HOME, "y_train.npy")
     WORD_DIC = os.path.join(DATA_HOME, "word_index.pkl")
-
-
-    maxlen = 50
-    vocab_size = 50000
-
+    
     # lstm parameters
 
-    hidden_lstm = 128
-    dropout_embedding = 0.8
-    dropout_lstm = 0.8
-    batch_size = 16
-    epochs=5
+    hidden_lstm = 512
+    dropout_embedding = 0.1
+    dropout_lstm = 0.1
+    batch_size = 256
+    epochs=10
+    
+    
+    # make embedding matrix
+
+
+    filepath = os.path.join(MODELS, 'weights.{epoch:02d}-{val_loss:.2f}.hdf5')
 
     print("Loading training data ....")
-    q1_train, q2_train, y_train  = load_data()
-
-    clbks = keras.callbacks.TensorBoard(log_dir=LOGS, 
+    q1_train, q2_train, y_train, word_index  = load_data()
+    
+    # make embedding matrix
+    embedding_matrix = makeEM(MAX_NB_WORDS, word_index)
+    logs = keras.callbacks.TensorBoard(log_dir=LOGS, 
                     histogram_freq=0, 
                     write_graph=True, 
                     write_images=False)
 
+    save_model = keras.callbacks.ModelCheckpoint(filepath, 
+                    monitor='val_loss', 
+                    verbose=0, 
+                    save_best_only=True, 
+                    save_weights_only=False, 
+                    mode='auto', 
+                    period=1)
+
     print("Building Model ... ")
     model = shared_lstm(
-                    maxlen=maxlen,
-                    vocab_size=vocab_size,
+                    embedding_matrix=embedding_matrix,
+                    maxlen=MAXLEN,
+                    vocab_size=MAX_NB_WORDS,
                     hidden_lstm=hidden_lstm,
                     batch_size=batch_size,
                     dropout_lstm=dropout_lstm,
@@ -129,21 +177,8 @@ if __name__ == "__main__":
                     y_train, 
                     epochs=epochs, 
                     batch_size=batch_size,
-                    callbacks=[clbks])
+                    validation_split=0.1,
+                    shuffle=True,
+                    callbacks=[logs, save_model])
 
-    # save weights
-    day = datetime.now().strftime("%A_%d_%m_%_H_%-M")
-    
-    try: 
-        folder = os.path.join(MODELS, day)
-        os.makedirs(folder)
-    except FileExistError:
-        pass
-
-    print('Storing model weights in: ', folder)
-    model.save_weights(os.path.join(folder, 'shared_model_weights.hdf5'))
-
-    # save model
-    print('Storing model in: ', folder)
-    f = open(os.path.join(MODELS,  'shared_model.json'), 'w').write(model.to_json())
     print('Done training')

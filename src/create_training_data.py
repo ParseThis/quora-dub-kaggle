@@ -66,7 +66,7 @@ if __name__ == '__main__':
     # 'UNK' = -1 :
 
     vocab_size = 50000
-    maxlen = 50 # maxlen of the question encoding
+    maxlen = 20 # maxlen of the question encoding
     
     tkn = TweetTokenizer().tokenize
     enc = OneHotEncoder()
